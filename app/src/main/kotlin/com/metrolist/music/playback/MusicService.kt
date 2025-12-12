@@ -103,6 +103,7 @@ import com.metrolist.music.extensions.collect
 import com.metrolist.music.extensions.collectLatest
 import com.metrolist.music.extensions.currentMetadata
 import com.metrolist.music.extensions.findNextMediaItemById
+import com.metrolist.music.extensions.toEnum
 import com.metrolist.music.extensions.mediaItems
 import com.metrolist.music.extensions.metadata
 import com.metrolist.music.extensions.setOffloadEnabled
@@ -189,11 +190,7 @@ class MusicService :
     val waitingForNetworkConnection = MutableStateFlow(false)
     private val isNetworkConnected = MutableStateFlow(false)
 
-    private val audioQuality by enumPreference(
-        this,
-        AudioQualityKey,
-        com.metrolist.music.constants.AudioQuality.AUTO
-    )
+    private lateinit var audioQuality: com.metrolist.music.constants.AudioQuality
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
@@ -209,7 +206,7 @@ class MusicService :
             database.format(mediaMetadata?.id)
         }
 
-    val playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
+    lateinit var playerVolume: MutableStateFlow<Float>
 
     lateinit var sleepTimer: SleepTimer
 
@@ -304,6 +301,8 @@ class MusicService :
 
         connectivityManager = getSystemService()!!
         connectivityObserver = NetworkConnectivityObserver(this)
+        audioQuality = dataStore.get(AudioQualityKey).toEnum(com.metrolist.music.constants.AudioQuality.AUTO)
+        playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
 
         scope.launch {
             connectivityObserver.networkStatus.collect { isConnected ->
@@ -967,27 +966,32 @@ class MusicService :
     }
 
     fun toggleLike() {
-        database.query {
-            currentSong.value?.let {
+        scope.launch {
+            val songToToggle = currentSong.first()
+            songToToggle?.let {
                 val song = it.song.toggleLike()
-                update(song)
-                syncUtils.likeSong(song)
+                database.query {
+                    update(song)
+                    syncUtils.likeSong(song)
 
-                // Check if auto-download on like is enabled and the song is now liked
-                if (dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-                    // Trigger download for the liked song
-                    val downloadRequest = androidx.media3.exoplayer.offline.DownloadRequest
-                        .Builder(song.id, song.id.toUri())
-                        .setCustomCacheKey(song.id)
-                        .setData(song.title.toByteArray())
-                        .build()
-                    androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
-                        this@MusicService,
-                        ExoDownloadService::class.java,
-                        downloadRequest,
-                        false
-                    )
+                    // Check if auto-download on like is enabled and the song is now liked
+                    if (dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
+                        // Trigger download for the liked song
+                        val downloadRequest =
+                            androidx.media3.exoplayer.offline.DownloadRequest
+                                .Builder(song.id, song.id.toUri())
+                                .setCustomCacheKey(song.id)
+                                .setData(song.title.toByteArray())
+                                .build()
+                        androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                            this@MusicService,
+                            ExoDownloadService::class.java,
+                            downloadRequest,
+                            false
+                        )
+                    }
                 }
+                currentMediaMetadata.value = player.currentMetadata
             }
         }
     }
