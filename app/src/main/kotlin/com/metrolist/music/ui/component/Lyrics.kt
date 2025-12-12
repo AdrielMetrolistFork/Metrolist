@@ -14,6 +14,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -777,114 +780,94 @@ fun Lyrics(
 
 
 
-        // Action buttons: Close and Share buttons grouped together
-        if (isSelectionModeActive) {
-            mediaMetadata?.let { metadata ->
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 16.dp), // Just above player slider
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Row containing both close and share buttons
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Close button (circular, right side of share)
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp) // Larger for better touch target
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.3f),
-                                    shape = CircleShape
-                                )
-                                .clickable {
-                                    isSelectionModeActive = false
-                                    selectedIndices.clear()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.close),
-                                contentDescription = stringResource(R.string.cancel),
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Share button (rectangular with text)
-                        Row(
-                            modifier = Modifier
-                                .background(
-                                    color = if (selectedIndices.isNotEmpty())
-                                        Color.White.copy(alpha = 0.9f) // White background when active
-                                    else
-                                        Color.White.copy(alpha = 0.5f), // Lighter white when inactive
-                                    shape = RoundedCornerShape(24.dp)
-                                )
-                                .clickable(enabled = selectedIndices.isNotEmpty()) {
-                                    if (selectedIndices.isNotEmpty()) {
-                                        val sortedIndices = selectedIndices.sorted()
-                                        val selectedLyricsText = sortedIndices
-                                            .mapNotNull { lines.getOrNull(it)?.text }
-                                            .joinToString("\n")
-
-                                        if (selectedLyricsText.isNotBlank()) {
-                                            shareDialogData = Triple(
-                                                selectedLyricsText,
-                                                metadata.title,
-                                                metadata.artists.joinToString { it.name }
-                                            )
-                                            showShareDialog = true
-                                        }
-                                        isSelectionModeActive = false
-                                        selectedIndices.clear()
-                                    }
-                                }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.share),
-                                contentDescription = stringResource(R.string.share_selected),
-                                tint = Color.Black, // Black icon on white background
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.share),
-                                color = Color.Black, // Black text on white background
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // Action buttons are now in the bottom bar
         // Removed the more button from bottom - it's now in the top header
     }
 
     AnimatedVisibility(
-        visible = !isAutoScrollEnabled,
-        enter = fadeIn(animationSpec = tween(durationMillis = 300)) + scaleIn(animationSpec = tween(durationMillis = 300)),
-        exit = fadeOut(animationSpec = tween(durationMillis = 300)) + scaleOut(animationSpec = tween(durationMillis = 300)),
+        visible = !isAutoScrollEnabled || isSelectionModeActive,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
     ) {
-        FilledTonalButton(onClick = {
-            scope.launch {
-                performSmoothPageScroll(currentLineIndex, 1500)
+        Row(
+            modifier = Modifier.animateContentSize(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AnimatedVisibility(
+                visible = !isAutoScrollEnabled,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                FilledTonalButton(onClick = {
+                    scope.launch {
+                        performSmoothPageScroll(currentLineIndex, 1500)
+                    }
+                    isAutoScrollEnabled = true
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.sync),
+                        contentDescription = stringResource(R.string.auto_scroll),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = stringResource(R.string.auto_scroll))
+                }
             }
-            isAutoScrollEnabled = true
-        }) {
-            Icon(
-                painter = painterResource(id = R.drawable.sync),
-                contentDescription = stringResource(R.string.auto_scroll),
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = stringResource(R.string.auto_scroll))
+            AnimatedVisibility(
+                visible = isSelectionModeActive,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            isSelectionModeActive = false
+                            selectedIndices.clear()
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.close),
+                            contentDescription = stringResource(R.string.cancel),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            if (selectedIndices.isNotEmpty()) {
+                                val sortedIndices = selectedIndices.sorted()
+                                val selectedLyricsText = sortedIndices
+                                    .mapNotNull { lines.getOrNull(it)?.text }
+                                    .joinToString("\n")
+
+                                if (selectedLyricsText.isNotBlank()) {
+                                    shareDialogData = Triple(
+                                        selectedLyricsText,
+                                        mediaMetadata?.title ?: "",
+                                        mediaMetadata?.artists?.joinToString { it.name } ?: ""
+                                    )
+                                    showShareDialog = true
+                                }
+                                isSelectionModeActive = false
+                                selectedIndices.clear()
+                            }
+                        },
+                        enabled = selectedIndices.isNotEmpty()
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.share),
+                            contentDescription = stringResource(R.string.share_selected),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = stringResource(R.string.share))
+                    }
+                }
+            }
         }
     }
 
